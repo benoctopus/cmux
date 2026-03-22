@@ -5283,6 +5283,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         )
     }
 
+    /// Returns true if the focused terminal appears to be running neovim/vim
+    private func isFocusedTerminalRunningNeovim() -> Bool {
+        guard let workspace = tabManager?.selectedWorkspace,
+              let terminalPanel = workspace.focusedTerminalPanel else {
+            return false
+        }
+        let title = workspace.panelTitle(panelId: terminalPanel.id)?.lowercased() ?? ""
+        return title.contains("nvim") || title.contains("vim")
+    }
+
     private func preferredMainWindowContextForShortcuts(event: NSEvent) -> MainWindowContext? {
         if let context = contextForMainWindow(event.window) {
             return context
@@ -9500,6 +9510,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             }
         }
 
+        // Neovim pass-through: when neovim is detected in the focused terminal, let pane focus
+        // shortcuts pass through so neovim can handle split navigation first. The neovim plugin
+        // will call back to cmux CLI when at the edge of neovim splits.
+        let isNeovimFocused = isFocusedTerminalRunningNeovim()
+
         // Pane focus navigation (defaults to Cmd+Option+Arrow, but can be customized to letter/number keys).
         if matchDirectionalShortcut(
             event: event,
@@ -9507,6 +9522,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             arrowGlyph: "←",
             arrowKeyCode: 123
         ) || (ghosttyGotoSplitLeftShortcut.map { matchDirectionalShortcut(event: event, shortcut: $0, arrowGlyph: "←", arrowKeyCode: 123) } ?? false) {
+            if isNeovimFocused {
+                return false  // Pass through to neovim
+            }
             tabManager?.movePaneFocus(direction: .left)
 #if DEBUG
             recordGotoSplitMoveIfNeeded(direction: .left)
@@ -9519,6 +9537,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             arrowGlyph: "→",
             arrowKeyCode: 124
         ) || (ghosttyGotoSplitRightShortcut.map { matchDirectionalShortcut(event: event, shortcut: $0, arrowGlyph: "→", arrowKeyCode: 124) } ?? false) {
+            if isNeovimFocused {
+                return false  // Pass through to neovim
+            }
             tabManager?.movePaneFocus(direction: .right)
 #if DEBUG
             recordGotoSplitMoveIfNeeded(direction: .right)
@@ -9531,6 +9552,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             arrowGlyph: "↑",
             arrowKeyCode: 126
         ) || (ghosttyGotoSplitUpShortcut.map { matchDirectionalShortcut(event: event, shortcut: $0, arrowGlyph: "↑", arrowKeyCode: 126) } ?? false) {
+            if isNeovimFocused {
+                return false  // Pass through to neovim
+            }
             tabManager?.movePaneFocus(direction: .up)
 #if DEBUG
             recordGotoSplitMoveIfNeeded(direction: .up)
@@ -9543,6 +9567,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             arrowGlyph: "↓",
             arrowKeyCode: 125
         ) || (ghosttyGotoSplitDownShortcut.map { matchDirectionalShortcut(event: event, shortcut: $0, arrowGlyph: "↓", arrowKeyCode: 125) } ?? false) {
+            if isNeovimFocused {
+                return false  // Pass through to neovim
+            }
             tabManager?.movePaneFocus(direction: .down)
 #if DEBUG
             recordGotoSplitMoveIfNeeded(direction: .down)

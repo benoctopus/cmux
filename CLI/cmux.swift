@@ -1753,16 +1753,32 @@ struct CMUXCLI {
 
         case "focus-pane":
             let workspaceArg = workspaceFromArgsOrEnv(commandArgs, windowOverride: windowId)
-            guard let paneRaw = optionValue(commandArgs, name: "--pane") ?? commandArgs.first else {
-                throw CLIError(message: "focus-pane requires --pane <id|ref>")
+            let direction = optionValue(commandArgs, name: "--direction")
+
+            if let direction {
+                // Directional focus
+                let validDirections = ["left", "right", "up", "down"]
+                guard validDirections.contains(direction.lowercased()) else {
+                    throw CLIError(message: "Invalid direction: must be left, right, up, or down")
+                }
+                var params: [String: Any] = ["direction": direction.lowercased()]
+                let wsId = try normalizeWorkspaceHandle(workspaceArg, client: client)
+                if let wsId { params["workspace_id"] = wsId }
+                let payload = try client.sendV2(method: "pane.focus_direction", params: params)
+                printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2OKSummary(payload, idFormat: idFormat, kinds: ["workspace"]))
+            } else {
+                // Focus by pane ID (existing behavior)
+                guard let paneRaw = optionValue(commandArgs, name: "--pane") ?? commandArgs.first else {
+                    throw CLIError(message: "focus-pane requires --pane <id|ref> or --direction <left|right|up|down>")
+                }
+                var params: [String: Any] = [:]
+                let wsId = try normalizeWorkspaceHandle(workspaceArg, client: client)
+                if let wsId { params["workspace_id"] = wsId }
+                let paneId = try normalizePaneHandle(paneRaw, client: client, workspaceHandle: wsId)
+                if let paneId { params["pane_id"] = paneId }
+                let payload = try client.sendV2(method: "pane.focus", params: params)
+                printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2OKSummary(payload, idFormat: idFormat, kinds: ["pane", "workspace"]))
             }
-            var params: [String: Any] = [:]
-            let wsId = try normalizeWorkspaceHandle(workspaceArg, client: client)
-            if let wsId { params["workspace_id"] = wsId }
-            let paneId = try normalizePaneHandle(paneRaw, client: client, workspaceHandle: wsId)
-            if let paneId { params["pane_id"] = paneId }
-            let payload = try client.sendV2(method: "pane.focus", params: params)
-            printV2Payload(payload, jsonOutput: jsonOutput, idFormat: idFormat, fallbackText: v2OKSummary(payload, idFormat: idFormat, kinds: ["pane", "workspace"]))
 
         case "new-pane":
             let workspaceArg = workspaceFromArgsOrEnv(commandArgs, windowOverride: windowId)
@@ -6364,18 +6380,21 @@ struct CMUXCLI {
             """
         case "focus-pane":
             return """
-            Usage: cmux focus-pane [--pane <id|ref> | <id|ref>] [flags]
+            Usage: cmux focus-pane [--pane <id|ref> | <id|ref>] [--direction <dir>] [flags]
 
-            Focus the specified pane.
+            Focus the specified pane by ID or in a direction.
 
             Flags:
-              --pane <id|ref>          Pane to focus (required unless passed positionally)
+              --pane <id|ref>          Pane to focus (required unless using --direction)
+              --direction <left|right|up|down>  Focus pane in the specified direction
               --workspace <id|ref>     Workspace context (default: $CMUX_WORKSPACE_ID)
 
             Example:
               cmux focus-pane --pane pane:2
               cmux focus-pane pane:1
               cmux focus-pane --pane pane:1 --workspace workspace:2
+              cmux focus-pane --direction left
+              cmux focus-pane --direction down --workspace workspace:1
             """
         case "new-pane":
             return """
